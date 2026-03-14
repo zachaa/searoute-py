@@ -1,7 +1,7 @@
 import geojson
 from searoute.classes.area_feature import AreaFeature
 from searoute.classes.ports_props import PortProps
-from searoute.tests.test_utils import generate_random_word, get_eur_like_poly, get_suisse_poly
+from searoute.tests.test_utils import generate_random_word, get_eur_like_poly, get_suisse_poly, get_lux_poly
 
 
 def test_norm_preferred_ports():
@@ -55,7 +55,7 @@ def test_contains():
     areaCH = AreaFeature(coordinates=get_suisse_poly(), name='CH_poly_area')
     assert True == areaCH.contains(*basel_point)
 
-    # test if Paris is not in Switweland
+    # test if Paris is not in Switzerland
     paris_point = (2.333333, 48.866667) # Paris
     assert False == areaCH.contains(*paris_point)
 
@@ -82,3 +82,26 @@ def test_contains():
     assert False == areaEUR.contains(*tokyo_point)
 
 
+def test_distance():
+    areaCH = AreaFeature(coordinates=get_suisse_poly(), name='CH_poly_area')
+
+    # test di from distance Paris in Switzerland area
+    paris_point = (2.333333, 48.866667) # Paris
+    dist_paris = areaCH.distance(*paris_point)
+    print('dist Paris:',dist_paris)
+    
+
+    basel_point = (7.6174, 47.5186) # Basel city
+    dist_basel = areaCH.distance(*basel_point)
+    print('dist Basel:', dist_basel)
+    # Paris must be further away from CH thn Basel (a swiss city)
+    assert dist_basel < dist_paris
+
+    areaLU = AreaFeature(coordinates=get_lux_poly(), name='LU_poly_area')
+    dist_paris_lux = areaLU.distance(*paris_point)
+
+    assert dist_paris_lux < dist_paris
+
+
+    dist_basel_lux = areaLU.distance(*basel_point)
+    assert dist_basel_lux > dist_basel

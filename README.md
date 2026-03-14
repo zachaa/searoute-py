@@ -152,9 +152,17 @@ returns :
 ~~~
 
 ## Preferred Ports
-It's possible to select referred ports which can be configured with one or a `list` of `AreaFeature`:
 
-Start by creating/referencing preferred ports using `PortProps` object which should contain a `port_id`, `share` (could be any positive number) and `props` corresponding to attributes of a port. 
+Preferred ports can be defined using one or more `AreaFeature` objects:
+
+Start by creating or referencing preferred ports with the `PortProps` class.A PortProps instance includes:
+
+  - `port_id` — the port identifier
+  - `share` — a positive weight used for selection
+  - `props` — optional attributes describing the port (e.g., coordinates or metadata)
+
+
+
 ```py
 # your preferred ports
 port_one = PortProps('MY_PORT_ID', 2, {'x':1, 'y':2})
@@ -168,11 +176,11 @@ area_one = AreaFeature(coordinates=[[[0,0], [0,10],[0,20], [20, 20], [0, 0]]], n
 # create other AreaFeature
 area_two = AreaFeature(...)
 ```
-Note that the smallest AreaFeature which contains the point will be selected.
+When multiple AreaFeature objects contain a point, the smallest area will be used to determine the preferred ports.
 
 Finally, call the function which will return a tuple of 3 values, or 4 values when `include_area_name` is set to `True`:
 ```py
-# myPorts is the instance of Port, by default is sr.P
+# myPorts is the instance of Port, by default is sr.setup_P()
 origin = (11, 12)
 pref_ports = myPorts.get_preferred_ports(*origin, AreaFeature.create([area_one, area_two]), top=2, include_area_name = True)
 ```
@@ -183,48 +191,189 @@ areas = AreaFeature.create([area_one, area_two])
 sr.searoute(..., include_ports = True, port_params = {'ports_in_areas': areas})
 ````
 
+
+
 ## Parameters
 
-`origin`    
-Mandatory. A tuple or array of 2 floats representing longitude and latitude i.e : `({lon}, {lat})`
+* **`origin`** *(required)*
+  Tuple or array of two floats representing the **longitude and latitude** of the starting point.
 
-`destination`    
-Mandatory. A tuple or array of 2 floats representing longitude and latitude i.e : `({lon}, {lat})`
+  Example:
 
-`units`    
-Optional. Default to `km` = kilometers, can be `m` = meters `mi` = miles `ft` = feets `in` = inches `deg` = degrees `cen` = centimeters `rad` = radians `naut` = nauticals `yd` = yards
+  ```
+  (lon, lat)
+  ```
 
-`speed_knot`    
-Optional. Speed of the boat, default 24 knots 
+---
 
-`append_orig_dest`    
-Optional. If the origin and destination should be appended to the LineString, default is `False`
+* **`destination`** *(required)*
+  Tuple or array of two floats representing the **longitude and latitude** of the destination point.
 
-`restrictions`    
-Optional. List of passages to be restricted during calculations.
-Possible values : `babalmandab`, `bosporus`, `gibraltar`, `suez`, `panama`, `ormuz`, `northwest`, `malacca`, `sunda`, `chili`, `south_africa`;
-default is `['northwest']`
+  Example:
 
-`include_ports`    
-Optional. If the port of load and discharge should be included, default is `False`
+  ```
+  (lon, lat)
+  ```
 
-`port_params`    
-Optional. If `include_ports` is `True` then you can set port configuration for advanced filtering :
-- `only_terminals` to include only terminal ports, default `False`
-- `country_pol` country iso code (2 letters) for closest port of load, default `None`. When not set or not found, closest port is based on geography.
-- `country_pod` country iso code (2 letters) for closest port of discharge, default `None`. When not set or not found, closest port is based on geography.
-- `country_restricted` to filter out ports that have registered an argument key `to_cty`(a list) which indicates an existing route to the country same as in `country_pod`; default `False`
-- `ports_in_areas` : a FeatureCollection containing areas with preferred ports, created of AreaFeature, use AreaFeature.create([...]). The previous configurations will be ignored.
-If there are many ports then the result will be a list of GeoJson Features, instead of an object of GeoJson Feature.
-Preferred ports with share = 0 will be ignored.
+---
 
-`return_passages`    
-Optional. to return traversed passages, default is `False`
-    
-default is `{}`
+* **`units`** *(optional)*
+  Unit used to compute the route distance.
 
-### Returns
-GeoJson Feature or list[GeoJson Feature] if many routes configured in `port_params`.
+  Default:
+  ```
+  km
+  ```
+
+  Supported values:
+  `km` = kilometers, `m` = meters `mi` = miles `ft` = feets `in` = inches `deg` = degrees `cen` = centimeters `rad` = radians `naut` = nauticals `yd` = yards
+
+---
+
+* **`speed_knot`** *(optional)*
+  Vessel speed used to estimate route duration.
+
+  Default:
+
+  ```
+  24
+  ```
+
+  Unit: **knots**
+
+---
+
+* **`append_orig_dest`** *(optional)*
+  If `True`, the origin and destination coordinates will be appended to the returned `LineString`.
+
+  Default:
+
+  ```
+  False
+  ```
+
+---
+
+* **`restrictions`** *(optional)*
+  List of maritime passages to **avoid during route calculation**.
+
+  Default:
+
+  ```
+  ["northwest"]
+  ```
+
+  Supported values:  `babalmandab`, `bosporus`, `gibraltar`, `suez`, `panama`, `ormuz`, `northwest`, `malacca`, `sunda`, `chili`, `south_africa`
+
+---
+
+* **`include_ports`** *(optional)*
+  If `True`, the algorithm includes the **port of loading (POL)** and **port of discharge (POD)** in the result.
+
+  Default:
+
+  ```
+  False
+  ```
+
+---
+
+* **`port_params`** *(optional)*
+  Additional configuration used when `include_ports=True`.
+
+  Available options:
+
+  * **`only_terminals`**
+    Include only terminal ports.
+    Default: `False`
+
+  * **`country_pol`**
+    ISO-2 country code used to select the **Port of Loading (POL)**.
+    If not provided, the closest port geographically will be selected.
+
+    Example:
+
+    ```
+    "FR"
+    ```
+
+  * **`country_pod`**
+    ISO-2 country code used to select the **Port of Discharge (POD)**.
+    If not provided, the closest port geographically will be selected.
+
+  * **`country_restricted`**
+    Filters out ports that define a `to_cty` attribute containing the same country code as `country_pod`.
+
+    Default:
+
+    ```
+    False
+    ```
+
+  * **`ports_in_areas`**
+    Overrides all previous port filtering rules and defines preferred ports within geographic areas.
+
+    Must be created using:
+
+    ```
+    AreaFeature.create([...])
+    ```
+
+    Notes:
+
+    * Preferred ports with `share = 0` are ignored.
+    * If multiple ports match, the function returns **multiple GeoJSON routes**.
+
+  * **`ports_in_areas_from`**
+    Same behavior as `ports_in_areas`, but applied only to the **origin point (POL)**.
+
+  * **`ports_in_areas_to`**
+    Same behavior as `ports_in_areas`, but applied only to the **destination point (POD)**.
+
+  * **`strict_area`**
+    Only relevant when using `ports_in_areas`, `ports_in_areas_from`, or `ports_in_areas_to`.
+
+    Default:
+
+    ```
+    True
+    ```
+
+    Behavior:
+
+    * `False` → if the point is outside all areas, the **closest area** is used.
+    * `True` → if the point is outside all areas, the configuration is ignored.
+
+---
+
+* **`return_passages`** *(optional)*
+  If `True`, the result will include the **list of traversed maritime passages**.
+
+  Default:
+
+  ```
+  False
+  ```
+
+---
+
+
+
+# Return Value
+
+The function returns:
+
+```
+GeoJSON Feature
+```
+
+or (when many routes configured in `port_params`)
+
+```
+List[GeoJSON Feature]
+```
+
+
 ## Credits
 
 - [NetworkX](https://networkx.org/), a Python package for the creation, manipulation, and study of the structure, dynamics, and functions of complex networks.

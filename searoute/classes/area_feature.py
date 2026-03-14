@@ -1,7 +1,7 @@
 from geojson import Feature, FeatureCollection, Polygon
 from typing import Union, List, Tuple
 from .ports_props import PortProps
-from ..utils import pnpoly
+from ..utils import distance, pnpoly
 
 
 class AreaFeature(Feature):
@@ -97,4 +97,58 @@ class AreaFeature(Feature):
         n = len(poly)
         vx, vy  = list(zip(*poly))
         return pnpoly(n, vx, vy, x, y) 
-        
+    
+
+    def distance(self, x: float, y: float) -> float:
+        """
+        Compute the shortest distance from the point (x, y) to the polygon boundary.
+        This function finds the minimum Euclidean distance from the point to any edge of the polygon.
+
+        Parameters:
+        - x (float): X-coordinate (longitude) of the point.
+        - y (float): Y-coordinate (latitude) of the point.
+
+        Returns:
+        - float: The minimum distance between the point and the polygon.
+        """
+        def euclidean_distance(p1, p2):
+            import math
+            """Compute Euclidean distance between two points."""
+            return math.sqrt((p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2)
+
+        def point_to_segment_distance(px, py, x1, y1, x2, y2):
+            """
+            Compute the shortest distance from a point (px, py) to a line segment (x1, y1) - (x2, y2).
+            Uses projection to find perpendicular distance when inside segment range.
+            """
+            ABx, ABy = x2 - x1, y2 - y1  # Vector AB
+            APx, APy = px - x1, py - y1  # Vector AP
+            dot_product = APx * ABx + APy * ABy
+            ab_squared = ABx ** 2 + ABy ** 2  # Length squared of segment
+
+            if ab_squared == 0:  # Segment is a point
+                return distance((px, py), (x1, y1))
+
+            t = dot_product / ab_squared
+
+            if t < 0:  # Closest to point A
+                closest_x, closest_y = x1, y1
+            elif t > 1:  # Closest to point B
+                closest_x, closest_y = x2, y2
+            else:  # Closest to segment itself
+                closest_x = x1 + t * ABx
+                closest_y = y1 + t * ABy
+
+            return euclidean_distance((px, py), (closest_x, closest_y))
+
+        # Get polygon boundary (first set of coordinates)
+        polygon = self.geometry.coordinates[0]
+        min_distance = float('inf')
+
+        for i in range(len(polygon) - 1):  # Loop through each edge
+            x1, y1 = polygon[i]
+            x2, y2 = polygon[i + 1]
+            dist = point_to_segment_distance(x, y, x1, y1, x2, y2)
+            min_distance = min(min_distance, dist)
+
+        return min_distance

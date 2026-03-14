@@ -4,6 +4,7 @@ from ..utils import load_from_geojson
 from .kdtree import KDTree
 from . import area_feature
 from geojson import FeatureCollection
+from itertools import product
 
 
 class Ports(nx.Graph):
@@ -101,23 +102,26 @@ s
 
         # add filter terminals
         filtered_nodes = [(n, data) for n, data in self.nodes(data=True) if data.get('t') == terminal_filter]
-        filtered_nodes_prev = None
+        filtered_nodes_prev = []
 
         if len(filtered_nodes)>0:
             # add filter "from county"
             filtered_nodes_prev = filtered_nodes
             filtered_nodes = [(n, data) for n, data in filtered_nodes_prev if cty_filter(data, cty)]
+        else:
+            filtered_nodes = filtered_nodes_prev
 
         if len(filtered_nodes)>0:
             # add filter "to county"
             filtered_nodes_prev = filtered_nodes
             filtered_nodes = [(n, data) for n, data in filtered_nodes_prev if cty_to_filter(data, to_cty)]
+        else:
+            filtered_nodes = filtered_nodes_prev
 
-        # finally bring all 
+        # finally select all if not found any yet..
         if len(filtered_nodes)==0:
             filtered_nodes = self.nodes(data=True)
             
-
         if len(filtered_nodes)>0:
             return self.subgraph([n for n,_ in filtered_nodes])
         else:
@@ -159,32 +163,130 @@ s
             self.kdtree = KDTree(self._node)
 
     
-
-    def get_preferred_ports(self, x,y, ft:FeatureCollection, top = None, include_area_name = False):
-        preferred_ports = []
+    def get_selected_port_matrix(self, origin, destination, port_params = {}):
         
-        s_area = None
-        s_area_size = float('inf')
-        s_area_name = None
+        
+        port_in_areas_from = port_params.get('ports_in_areas_from', None)
+        port_in_areas_to = port_params.get('ports_in_areas_to', None)
+        port_in_areas = port_params.get('ports_in_areas', None)
+
+        if not port_in_areas_from:
+            port_in_areas_from = port_in_areas
+            
+        if not port_in_areas_to:
+            port_in_areas_to = port_in_areas
+
+        # collecting config request
+        only_terminals = port_params.get('only_terminals', False)
+        country_pol = port_params.get('country_pol', None)
+        country_pod = port_params.get('country_pod', None)
+
+        country_restricted = port_params.get('country_restricted', False)
+        country_restricted_key =  'to_cty'
+        country_restricted_strict = False
+
+        # strict area
+        conf_strict_area = port_params.get('strict_area', True)
+
+        if country_restricted == 'strict':
+            country_restricted_strict = True
+            country_restricted = True
+
+        to_cty = country_pod if country_restricted else None
+
+        pref_ports_from = []
+        pref_ports_to= []
+
+        if port_in_areas_from:
+            pref_ports_from = self.get_preferred_ports(*origin, port_in_areas_from, top=None, strict_area=conf_strict_area)
+            for i in pref_ports_from:
+                _, _, c = i
+                if country_restricted_key in c:
+                    c.pop(country_restricted_key)
+
+        if len(pref_ports_from)==0:
+            # set origin as closest port
+            closestPortOrigin = self.query(
+                terminals=only_terminals, cty=country_pol, to_cty=to_cty, strict=country_restricted_strict).kdtree.query(origin)
+            if closestPortOrigin:
+                port_origin = self.nodes[closestPortOrigin].copy()
+                if country_restricted_key in port_origin:
+                    port_origin.pop(country_restricted_key)
+                
+                pref_ports_from = [(port_origin.get('port', None), 1 , port_origin)]
+
+        if port_in_areas_to:
+            pref_ports_to = self.get_preferred_ports(*destination, port_in_areas_to, top=None, strict_area=conf_strict_area)
+            for i in pref_ports_to:
+                _, _, c = i
+                if country_restricted_key in c:
+                    c.pop(country_restricted_key)
+
+        if len(pref_ports_to)==0:
+            closestPortDest = self.query(
+                terminals=only_terminals, cty=country_pod).kdtree.query(destination)
+            if closestPortDest:
+                port_dest = self.nodes[closestPortDest].copy()
+                if country_restricted_key in port_dest:
+                    port_dest.pop(country_restricted_key)
+                
+                pref_ports_to = [(port_dest.get('port', None), 1 , port_dest)]
+
+        return list(product(pref_ports_from, pref_ports_to))
+
+    def get_preferred_ports(self, x, y, ft:FeatureCollection, top = None, include_area_name = False, strict_area = True):
+        """
+        Retrieves the preferred ports based on the given (x, y) location.
+
+        Parameters:
+        - x, y: Coordinates of the point to check.
+        - ft: FeatureCollection containing multiple Area features.
+        - top: (Optional) Limits the number of returned preferred ports.
+        - include_area_name: (Optional) If True, includes the area name in the result.
+
+        Returns:
+        - A sorted list of preferred ports, normalized by their share value.
+        """
+        preferred_ports = []
+
+        # Find the smallest area feature containing (x, y)
+        smallest_area = min(
+            [feature.properties for feature in ft.features 
+            if isinstance(feature, area_feature.AreaFeature) and feature.contains(x, y)],
+            key=lambda prop: prop.get('area', float('inf')),
+            default=None)
+        
+
+        if smallest_area is None and strict_area == False:
+            # Find the closest polygon based on distance
+            max_distance = 2000
+            closest_area = None
+            closest_distance = float('inf')  # Start with an infinitely large distance
+
+            # Loop through features once and find the closest area within the distance limit
+            for feature in ft.features:
+                if isinstance(feature, area_feature.AreaFeature):
+                    dist = feature.distance(x, y)  # Calculate the distance
+                    if dist <= max_distance:  # Check if the distance is within the allowed limit
+                        if dist < closest_distance:  # Check if it's the closest found so far
+                            closest_area = feature
+                            closest_distance = dist
+            
+            # If a closest area is found, assign its properties
+            if closest_area is not None:
+                smallest_area = closest_area.properties
+            else:
+                # If no valid area found, handle it accordingly
+                smallest_area ={}   # or assign a default value if necessary
+
+        if smallest_area == None:
+            smallest_area = {} 
+
+                
+        s_area_name = smallest_area.get('name', None)
+        preferred_ports = smallest_area.get('preferred_ports', [])
         
         _sum = 0
-        for feature in ft.features:
-            if not isinstance(feature, area_feature.AreaFeature):
-                continue
-            
-            if feature.contains(x,y):
-                prop = feature.properties
-                
-                name = prop.get('name', None)
-                area = prop.get('area', float("inf"))
-
-                if s_area_size >= area:
-                    s_area_size = area
-                    s_area = prop
-                    s_area_name = name
-                
-        preferred_ports = s_area.get('preferred_ports', [])
-        
         for p in preferred_ports:
             _sum+=p.share
 
@@ -208,5 +310,3 @@ s
             return sorted_by_second[:top]
         else:
             return sorted_by_second
-
-    

@@ -1,6 +1,8 @@
 from searoute.classes.area_feature import AreaFeature
 from searoute.classes.ports_props import PortProps
-from searoute.tests.test_utils import get_eur_like_poly, get_suisse_poly
+from searoute.tests.test_utils import get_eur_like_poly, get_suisse_poly, get_lux_poly, get_be_poly
+
+from searoute.classes.ports import Ports
 
 import searoute as sr
 import unittest
@@ -53,13 +55,13 @@ class TestPortProps(unittest.TestCase):
 
 
     def test_preferred_ports(self):
-        # assuming 2 ports prefered
+        # assuming 2 ports preferred
         first_port = PortProps('FRMAR', 2)
         second_port = PortProps('NEW_PRT_ID', 7, {'x':1, 'y':2})
 
         # point is in Europe
         point = (7, 47)
-        # europan area
+        # European area
         eurArea = AreaFeature(get_eur_like_poly(), 
                               name= 'EUR', 
                               preferred_ports=
@@ -74,7 +76,7 @@ class TestPortProps(unittest.TestCase):
         self.assertEqual(eurArea.properties['name'], result[0][3])
 
         # assuming 2 areas
-        # it should select the smalles base on its area, here 'CH'
+        # it should select the smallest base on its area, here 'CH'
         chArea = AreaFeature(get_suisse_poly(), 
                               name= 'CH', 
                               preferred_ports=
@@ -84,11 +86,46 @@ class TestPortProps(unittest.TestCase):
         
         self.assertEqual(chArea.properties['name'], result[0][3])
 
-        # if point elsevere, like Paris
+        # if point elsewhere, like Paris
         point = (2.333333, 48.866667)
-        result = sr.setup_P().get_preferred_ports(*point, AreaFeature.create([eurArea, chArea]), top=None, include_area_name = True)
+        result = sr.setup_P().get_preferred_ports(*point, AreaFeature.create([eurArea, chArea]), top=None, include_area_name = True, strict_area = False)
         
         self.assertNotEqual(chArea.properties['name'], result[0][3])
         self.assertEqual(eurArea.properties['name'], result[0][3])
+
+
+        # get closest area even if not part of it
+        result = sr.setup_P().get_preferred_ports(*point, AreaFeature.create([ chArea]), top=None, include_area_name = True, strict_area = False)
+        self.assertEqual(chArea.properties['name'], result[0][3])
+
+
+        # it should be lux area, as lux is closer then ch to paris
+        areaLU = AreaFeature(coordinates=get_lux_poly(), name='LU_poly_area', preferred_ports=[first_port])
+        result = sr.setup_P().get_preferred_ports(*point, AreaFeature.create([ chArea, areaLU ]), top=None, include_area_name = True, strict_area = False)
+        self.assertEqual(areaLU.properties['name'], result[0][3])
+        self.assertNotEqual(chArea.properties['name'], result[0][3])
+
+
+    def test_get_selected_port_matrix(self):
+        p = sr.setup_P()
+
+        brusx_point = (4.352066635732303, 50.85097556499499) # Bruxelles 
+        tokyo_point = (139.67917395748216, 35.77846652689662) # Tokyo
+
+        first_port, second_port = PortProps('FRLEH', 200), PortProps('BEANR',250 ), 
+        areaBE = AreaFeature(coordinates=get_be_poly(), name='BE', preferred_ports=[first_port, second_port])
         
-        
+        port_params = {
+            'ports_in_areas_from' : AreaFeature.create([areaBE])
+        }
+
+        r = p.get_selected_port_matrix(brusx_point, tokyo_point, port_params)
+        assert len(r) == 2
+        r_ports = [pr[0][0] for pr in r]
+
+        for i in ['BEANR', 'FRLEH']:
+            assert i in r_ports
+
+        paris_point = (2.333333, 48.866667) # Paris
+        r = p.get_selected_port_matrix(paris_point, tokyo_point, port_params)
+        print(r)

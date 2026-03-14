@@ -79,86 +79,70 @@ def searoute(origin, destination, units='km', speed_knot=24, append_orig_dest=Fa
         if not port_params:
             port_params = {}
 
-        only_terminals = port_params.get('only_terminals', False)
-        country_pol = port_params.get('country_pol', None)
-        country_pod = port_params.get('country_pod', None)
+        port_matrix = P.get_selected_port_matrix(origin, destination, port_params)
+    else:
+        port_matrix = [(None, None)]
 
-        country_restricted = port_params.get('country_restricted', False)
-        country_restricted_key =  'to_cty'
-        country_restricted_strict = False
 
-        if country_restricted == 'strict':
-            country_restricted_strict = True
-            country_restricted = True
-        
-        to_cty = country_pod if country_restricted else None
-       
-        # set origin as closest port
-        closestPortOrigin = P.query(
-            terminals=only_terminals, cty=country_pol, to_cty=to_cty, strict=country_restricted_strict).kdtree.query(origin)
-        if closestPortOrigin:
-            origin = closestPortOrigin
-            port_origin = P.nodes[origin].copy()
-            if country_restricted_key in port_origin:
-                port_origin.pop(country_restricted_key)
+    def _get_feature(o_origin, o_destination, origin, destination, port_origin, port_dest, include_ports, append_orig_dest ):
 
-        # set destination as closest port
-        closestPortDest = P.query(
-            terminals=only_terminals, cty=country_pod).kdtree.query(destination)
-        if closestPortDest:
-            destination = closestPortDest
-            port_dest = P.nodes[destination].copy()
-            if country_restricted_key in port_dest:
-                port_dest.pop(country_restricted_key)
-    
-    # Get shortest route from the Marnet network 
-    # if origin or destination is not present in M, searches from the closest one
-    shortest_route_by_distance = M.shortest_path(o_origin, o_destination)
+        # Get shortest route from the Marnet network 
+        # if origin or destination is not present in M, searches from the closest one
+        shortest_route_by_distance = M.shortest_path(origin, destination)
 
-    if shortest_route_by_distance is None:
-        shortest_route_by_distance = []
-        
-    if include_ports and shortest_route_by_distance:
-        shortest_route_by_distance.insert(0, origin )
-        shortest_route_by_distance.append(destination )
-
-    if append_orig_dest:
-        if (origin != o_origin):
-            shortest_route_by_distance.insert(0, o_origin)
-        if (destination != o_destination):
-            shortest_route_by_distance.append(o_destination)
-
-    '''
-    ls = []
-    previous = None
-    traversed_passages = []
-
-    for i in shortest_route_by_distance:
-        now = i
-
-        edge = M.get_edge_data(previous, now)
-        if edge:
-            traversed_passages.append(edge.get("passage", None))
+        if shortest_route_by_distance is None:
+            shortest_route_by_distance = []
             
-        fixed_coords = normalize_linestring(previous, now)
-        ls.append(fixed_coords)
-        previous = fixed_coords
+        if include_ports and shortest_route_by_distance:
+            shortest_route_by_distance.insert(0, origin )
+            shortest_route_by_distance.append(destination )
 
-    '''
-    ls, traversed_passages = process_route(shortest_route_by_distance, M, return_passages)
+        if append_orig_dest:
+            if (origin != o_origin):
+                shortest_route_by_distance.insert(0, o_origin)
+            if (destination != o_destination):
+                shortest_route_by_distance.append(o_destination)
 
-    total_length = distance_length(ls, units=units)
+        ls, traversed_passages = process_route(shortest_route_by_distance, M, return_passages)
 
-    duration = get_duration(speed_knot, total_length, units)
+        total_length = distance_length(ls, units=units)
 
-    feature = Feature(geometry=LineString(ls), properties={
-                      'length': total_length, 'units': units, 'duration_hours': duration})
+        duration = get_duration(speed_knot, total_length, units)
 
-    if include_ports and port_origin and port_dest:
-        feature.properties['port_origin'] = port_origin
-        feature.properties['port_dest'] = port_dest
+        feature = Feature(geometry=LineString(ls), properties={
+                        'length': total_length, 'units': units, 'duration_hours': duration})
 
-    if return_passages:
-        feature.properties['traversed_passages'] = passages.Passage.filter_valid_passages(traversed_passages)
+        if include_ports and port_origin and port_dest:
+            feature.properties['port_origin'] = port_origin
+            feature.properties['port_dest'] = port_dest
 
-    return feature
+        if return_passages:
+            feature.properties['traversed_passages'] = passages.Passage.filter_valid_passages(traversed_passages)
+
+        return feature
+    
+    result = []
+    for p_m in port_matrix:
+        pFrom, pTo = p_m
+        if pFrom:
+            pid, share, pProp = pFrom
+            origin = [pProp.get('x', None), pProp.get('y', None)]
+            pProp['share'] = share
+            pFrom = pProp
+
+        if pTo:
+            pid, share, pProp = pTo
+            destination = [pProp.get('x', None), pProp.get('y', None)]
+            pProp['share'] = share
+            pTo = pProp
+
+        res = _get_feature(o_origin, o_destination, origin, destination, pFrom, pTo, include_ports, append_orig_dest )
+        result.append(res)
+
+
+    if len(result)==1:
+        return result[0]
+    else:
+        return result
+    
+
