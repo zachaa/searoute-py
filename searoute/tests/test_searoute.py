@@ -3,6 +3,7 @@ from searoute.classes.area_feature import AreaFeature
 from searoute.classes.ports_props import PortProps
 from searoute.tests.test_utils import get_be_poly
 import geojson
+import pytest
 
 def test_passages():
     traj = sr.searoute([52.99, 25.01], [-61.87, 17.15], append_orig_dest=True, restrictions=['northwest', 'chili'], return_passages=True)
@@ -82,6 +83,23 @@ def test_2_area_searoute():
     assert type(result) == list
     assert len(result) == 2
     #print(result)
+
+@pytest.mark.filterwarnings("ignore")
+def test_restricted_paths():
+    # in this example all routes are restricted 
+    # it should return empty route with a warning
+
+
+    routes =  sr.searoute(
+        origin=(103.85457, 1.25760), # Singapore - SGSIN
+        destination=(23.62904, 37.94056), # Piraeus - GRPIR
+        restrictions=['suez', 'gibraltar'], # 'gibraltar', 'babalmandab'
+        return_passages=True
+    )
+    print(routes)
+    assert routes['geometry']['coordinates'] == []
+    assert routes['properties']['length'] == 0
+    assert routes['properties']['duration_hours'] == 0.0
 
 
 

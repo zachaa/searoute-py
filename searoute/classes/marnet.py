@@ -135,6 +135,7 @@ class Marnet(nx.Graph):
     # Get the shortest route by distance
     def __custom_w(self, u, v, data):
         return data.get('weight') if data.get('passage') not in self.restrictions else float('inf')
+    
 
     def shortest_path(self, origin, destination):
         """
@@ -150,14 +151,17 @@ class Marnet(nx.Graph):
 
         Returns
         -------
-        A list of nodes building the shortest path
+        length, path : number and list
+        length is the distance from source to target. path is a list of nodes on a path from source to target building the shortest path.
+        Note: length is in the unit when Marnet weight was registered (`km`)
         
         """
         origin_node = self.kdtree.query(origin)
         destination_node = self.kdtree.query(destination)
 
-        return nx.shortest_path(
+        return nx.bidirectional_dijkstra(
             self, origin_node, destination_node, weight=self.__custom_w) 
+    
 
     @staticmethod
     def from_geojson(*path):

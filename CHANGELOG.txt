@@ -105,3 +105,10 @@ Change Log
 - Added BERING passage #46
 - Added examples as notebook files #43 #41
 
+1.5.0 (15/03/2026)
+------------------
+- Added feature in port and area selection `port_params` for `ports_in_areas`
+- Fixed issue with returned passage when no path available #53
+- Updated README
+
+

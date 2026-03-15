@@ -10,6 +10,7 @@ searoute/__pycache__
 docs/
 .venv
 .tox
+dev_*/
 
 release_readme.md
 

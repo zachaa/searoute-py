@@ -1,6 +1,6 @@
 
 from .classes import ports, marnet, passages
-from .utils import get_duration, distance_length, from_nodes_edges_set, process_route, validate_lon_lat
+from .utils import get_duration, distance_length, from_nodes_edges_set, process_route, validate_lon_lat, raise_warn_no_path
 from geojson import Feature, LineString
 
 from functools import lru_cache
@@ -15,7 +15,6 @@ def setup_P():
 def setup_M():
     from .data.marnet_dict import edge_list as marnet_e, node_list as marnet_n
     return from_nodes_edges_set(marnet.Marnet(), marnet_n, marnet_e)
-
 
 
 def searoute(origin, destination, units='km', speed_knot=24, append_orig_dest=False, restrictions=[passages.Passage.northwest], include_ports=False, port_params={}, M:marnet.Marnet=None, P:ports.Ports=None, return_passages:bool = False):
@@ -88,9 +87,14 @@ def searoute(origin, destination, units='km', speed_knot=24, append_orig_dest=Fa
 
         # Get shortest route from the Marnet network 
         # if origin or destination is not present in M, searches from the closest one
-        shortest_route_by_distance = M.shortest_path(origin, destination)
+        # if path is restricted then returns the next shortest possible one
+        # if no paths are found due to restricted passages, length will be inf 
+        length_km, shortest_route_by_distance = M.shortest_path(origin, destination)
 
-        if shortest_route_by_distance is None:
+        # route path will be set to empty if length is inf due to restrictive passages
+        if shortest_route_by_distance is None or length_km == float('inf'):
+            # raise warning as no path found
+            raise_warn_no_path(origin, destination, length_km, restrictions)
             shortest_route_by_distance = []
             
         if include_ports and shortest_route_by_distance:
@@ -103,19 +107,24 @@ def searoute(origin, destination, units='km', speed_knot=24, append_orig_dest=Fa
             if (destination != o_destination):
                 shortest_route_by_distance.append(o_destination)
 
+        # processes passages : checks and normalizes the coords
         ls, traversed_passages = process_route(shortest_route_by_distance, M, return_passages)
 
+        # (re-)calculate length and duration
+        # (optional) length can use the provided one by shortest_path which should be normalized
         total_length = distance_length(ls, units=units)
-
         duration = get_duration(speed_knot, total_length, units)
 
+
+        # create Feature with LineSting and calculated parameters
         feature = Feature(geometry=LineString(ls), properties={
                         'length': total_length, 'units': units, 'duration_hours': duration})
 
         if include_ports and port_origin and port_dest:
             feature.properties['port_origin'] = port_origin
             feature.properties['port_dest'] = port_dest
-
+        
+        # add traversed passages if included in parameters
         if return_passages:
             feature.properties['traversed_passages'] = passages.Passage.filter_valid_passages(traversed_passages)
 

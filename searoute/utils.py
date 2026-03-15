@@ -1,6 +1,7 @@
 from math import atan2, cos,  pow, radians, sin, sqrt, tan
 import geojson
 import inspect
+import warnings
 
 
 def get_unique_number(lon, lat):
@@ -414,7 +415,9 @@ def process_route(shortest_route_by_distance, M, return_passages=False):
             now = i
             edge = M.get_edge_data(previous_traversed, now)
             if edge:
-                traversed_passages.append(edge.get("passage", None))
+                passage = edge.get("passage", None)
+                if passage:
+                    traversed_passages.append(passage)
                 
             fixed_coords = normalize_linestring(previous, now)
             ls.append(fixed_coords)
@@ -507,3 +510,27 @@ def pnpoly(nvert: int, vertx: list, verty: list, testx :float, testy: float) ->b
                 (testx < (vertx[j] - vertx[i]) * (testy - verty[i]) / (verty[j] - verty[i]) + vertx[i]):
             c = not c
     return c
+
+
+
+
+def raise_warn_no_path(origin, destination, length_km=float('inf'), restrictions=None):
+    """
+    Issue a warning when no path is found between two points.
+    
+    Args:
+        origin: Starting point of the route.
+        destination: Ending point of the route.
+        length_km: Length of the route in km. Defaults to infinity (no path found).
+        restrictions: Optional passage restrictions that may be blocking the route.
+    """
+    # Base warning message when no path is found
+    message = f"No path found between {origin} and {destination}."
+    
+    # Append restriction details if the route is infinitely long and restrictions exist,
+    # which likely indicates the path is blocked by passage restrictions
+    if length_km == float('inf') and restrictions:
+        message += f" The route may be blocked by passage restrictions: {restrictions}"
+    
+    # Issue the warning with the constructed message
+    warnings.warn(message, UserWarning)
